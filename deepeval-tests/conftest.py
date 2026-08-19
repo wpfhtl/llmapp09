@@ -2,6 +2,7 @@
 Shared fixtures and configuration for deepeval LLM evaluation tests.
 """
 
+import asyncio
 import os
 from typing import Optional, Tuple
 
@@ -63,7 +64,8 @@ class OllamaEvaluationModel(DeepEvalBaseLLM):
         return content, 0
 
     async def a_generate(self, prompt: str, schema=None) -> Tuple[str, float]:
-        return self.generate(prompt, schema)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self.generate(prompt, schema))
 
 
 eval_model = OllamaEvaluationModel()
