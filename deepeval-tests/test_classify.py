@@ -13,7 +13,7 @@ from deepeval.metrics import GEval
 from deepeval.dataset import EvaluationDataset
 
 from api_client import classify_text
-from conftest import json_schema_metric, output_correctness_metric, answer_relevancy_metric
+from conftest import json_schema_metric, output_correctness_metric, answer_relevancy_metric, eval_model
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +126,7 @@ classify_correctness_metric = GEval(
         LLMTestCaseParams.EXPECTED_OUTPUT,
     ],
     threshold=0.5,
+    model=eval_model,
 )
 
 classify_relevancy_metric = answer_relevancy_metric()

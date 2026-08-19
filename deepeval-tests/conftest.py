@@ -2,9 +2,71 @@
 Shared fixtures and configuration for deepeval LLM evaluation tests.
 """
 
+import os
+from typing import Optional, Tuple
+
+import requests
 import pytest
 from deepeval.metrics import GEval
+from deepeval.models import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCaseParams
+
+
+# ---------------------------------------------------------------------------
+# Custom evaluation model backed by the project's Ollama Cloud API
+# ---------------------------------------------------------------------------
+
+class OllamaEvaluationModel(DeepEvalBaseLLM):
+    """DeepEval-compatible model that calls the Ollama Cloud chat API.
+
+    Uses the same OLLAMA_BASE_URL / OLLAMA_API_KEY / OLLAMA_MODEL_EVAL
+    environment variables that the backend container uses, so no extra
+    secrets are required in CI.
+    """
+
+    def __init__(self):
+        self._base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com").rstrip("/")
+        self._api_key = os.environ.get("OLLAMA_API_KEY", "")
+        model_name = os.environ.get(
+            "OLLAMA_MODEL_EVAL",
+            os.environ.get("OLLAMA_MODEL_CLASSIFY", "gemma4:31b"),
+        )
+        super().__init__(model=model_name)
+
+    def get_model_name(self) -> str:
+        return self.name
+
+    def load_model(self):
+        return self
+
+    def _chat(self, prompt: str) -> str:
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"******"
+        response = requests.post(
+            f"{self._base_url}/api/chat",
+            headers=headers,
+            json={
+                "model": self.name,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            },
+            timeout=120,
+        )
+        response.raise_for_status()
+        return response.json()["message"]["content"]
+
+    def generate(self, prompt: str, schema=None) -> Tuple[str, float]:
+        content = self._chat(prompt)
+        if schema is not None:
+            return schema.model_validate_json(content), 0
+        return content, 0
+
+    async def a_generate(self, prompt: str, schema=None) -> Tuple[str, float]:
+        return self.generate(prompt, schema)
+
+
+eval_model = OllamaEvaluationModel()
 
 
 # ---------------------------------------------------------------------------
@@ -25,6 +87,7 @@ def json_schema_metric(schema_description: str):
             LLMTestCaseParams.ACTUAL_OUTPUT,
         ],
         threshold=0.5,
+        model=eval_model,
     )
 
 
@@ -42,6 +105,7 @@ def output_correctness_metric():
             LLMTestCaseParams.ACTUAL_OUTPUT,
         ],
         threshold=0.5,
+        model=eval_model,
     )
 
 
@@ -64,4 +128,5 @@ def answer_relevancy_metric():
             LLMTestCaseParams.ACTUAL_OUTPUT,
         ],
         threshold=0.5,
+        model=eval_model,
     )
